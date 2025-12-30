@@ -1,0 +1,345 @@
+CREATE OR REPLACE PROCEDURE fix_ffc   
+IS
+    /**********************************************************************
+
+    This procedure fixes federal_functional_class and federal_functional_class_descr on Route 0016X from
+    milepoints 167.23 -187.86 in snapshot year 2021 (setting them to the 2022 values) due to an editing error made in Metrans
+    
+    The elements are obtained from the routes view, the correct federal_functional_class and federal_functional_class_descr are 
+    obtained from the sections view AND nodes view
+    
+    The following tables are updated for snapshot year 2021
+    sections_history, nodes_history, complete_transportation_network, and crashes_on_route_2021
+    
+    This procedure will only be run once but can be used as a model to fix other errors
+    
+    06-06-2022 SH Intial Version
+    06-07-2022 SH Add fix for ffc in node crashes for crashes_on_route_2021
+    06-13-2022 SH Add fix for ffc for nodes in complete_transportation_network
+    06-24-2022 SH Add fix for ffc for nodes_history 
+                  ADD fix for WCSH_code editing error 
+    **********************************************************************/
+
+    CURSOR ffc_section_changes IS
+    select  distinct element_id, snapshot_year, federal_functional_class, federal_functional_class_descr from sections_history where snapshot_year = 2022 and element_id in
+ (select element_id from routes where route_number = '0016X' and begin_element_milepoint >= 167.23 and end_element_milepoint <= 187.86);
+
+    CURSOR node_ffc_changes IS
+      select node_id,  FEDERAL_FUNCTIONAL_CLASS, FEDERAL_FUNCTIONAL_CLASS_DESCR from nodes where PRIMARY_ROUTE_NUM = '0016X' and PRIMARY_ROUTE_MP >= 167.23 and PRIMARY_ROUTE_MP <= 187.86 order by PRIMARY_ROUTE_MP;
+      
+    CURSOR wcsh_section_changes IS
+     select  distinct  element_id, snapshot_year, WCSH_CODE  from sections_history where snapshot_year = 2022 and element_id in
+ (select element_id from routes where (route_number = '0003X' and begin_element_milepoint >= 102.27  and end_element_milepoint <= 103.46) or (route_number = '0003W' and begin_element_milepoint >= 0.08  and end_element_milepoint <= 0.18 ) );
+
+  
+  cntr                     NUMBER := 0;
+   
+    err_log_message          VARCHAR2 (200);
+    cntr_updated             NUMBER := 0;
+    cntr_added               NUMBER := 0;
+    cntr_replaced            NUMBER := 0;
+    serrlog_count            NUMBER := 0;
+
+    g_owner                  VARCHAR2 (20) := 'WH_ASSETS';
+    g_jobname                VARCHAR2 (30) := 'FIX_FFC';
+    g_start_time             DATE := SYSDATE;
+    g_object                 VARCHAR2 (20) := 'SECTIONS_HISTORY';
+    g_SQLMSG                 VARCHAR2 (1000);
+    V_flat_file_counts_txt   VARCHAR2 (1000);
+
+   
+BEGIN
+    
+
+    EXECUTE IMMEDIATE 'truncate table sections_history_error_log';
+    EXECUTE IMMEDIATE 'truncate table COMPLETE_NETWORK_ERROR_LOG';
+    EXECUTE IMMEDIATE 'truncate table CRASHES_ON_ROUTE_ERROR_LOG';
+    EXECUTE IMMEDIATE 'truncate table NODES_ERROR_LOG';
+
+    
+/*
+   
+        FOR rec IN ffc_section_changes
+        LOOP
+            
+                    UPDATE sections_history
+                       SET 
+                           federal_functional_class =
+                               rec.federal_functional_class,
+                           federal_functional_class_descr =
+                               rec.federal_functional_class_descr
+                     WHERE     element_id = rec.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO sections_history_error_log
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+                           
+                     UPDATE complete_transportation_network
+                       SET 
+                           federal_functional_class =
+                               rec.federal_functional_class,
+                           federal_functional_class_descr =
+                               rec.federal_functional_class_descr
+                     WHERE     element_id = rec.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO COMPLETE_NETWORK_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+
+    
+                   UPDATE crashes_on_route_2021 
+                   SET 
+                           federal_functional_class =
+                               rec.federal_functional_class,
+                           federal_functional_class_descr =
+                               rec.federal_functional_class_descr
+                     WHERE     element_id = rec.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO CRASHES_ON_ROUTE_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+
+                cntr_updated := cntr_updated + 1;
+
+                 
+           
+        END LOOP;
+        
+   */
+   
+          FOR w IN wcsh_section_changes  -- STILL NEED TO DO IN PRODUCTION
+        LOOP
+            
+                    UPDATE sections_history
+                       SET 
+                           WCSH_CODE = w.WCSH_CODE        
+                     WHERE     element_id = w.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO sections_history_error_log
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+                           
+                     UPDATE complete_transportation_network
+                       SET 
+                            WCSH_CODE = w.WCSH_CODE        
+                     WHERE     element_id = w.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO COMPLETE_NETWORK_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+
+    
+                   UPDATE crashes_on_route_2021 
+                   SET 
+                            WCSH_CODE = w.WCSH_CODE        
+                     WHERE     element_id = w.element_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO CRASHES_ON_ROUTE_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+
+                cntr_updated := cntr_updated + 1;
+
+                 
+           
+        END LOOP;
+        
+   /*
+        
+             FOR nfc IN node_ffc_changes
+             LOOP
+            
+               UPDATE crashes_on_route_2021 
+                   SET 
+                           federal_functional_class =
+                               nfc.federal_functional_class,
+                           federal_functional_class_descr =
+                               nfc.federal_functional_class_descr
+                     WHERE     node_id = nfc.node_id
+                               AND snapshot_year = 2021
+                               AND row_type = 'Node' 
+                       LOG ERRORS INTO CRASHES_ON_ROUTE_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+
+ UPDATE complete_transportation_network -- still need to fix for production 
+                   SET 
+                           federal_functional_class =
+                               nfc.federal_functional_class,
+                           federal_functional_class_descr =
+                               nfc.federal_functional_class_descr
+                     WHERE     node_id = nfc.node_id
+                               AND snapshot_year = 2021
+                               AND row_type = 'Node' 
+                       LOG ERRORS INTO COMPLETE_NETWORK_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+                cntr_updated := cntr_updated + 1;
+             
+                UPDATE nodes_history -- still need to fix for production 
+                   SET 
+                           federal_functional_class =
+                               nfc.federal_functional_class,
+                           federal_functional_class_descr =
+                               nfc.federal_functional_class_descr
+                     WHERE     node_id = nfc.node_id
+                               AND snapshot_year = 2021
+                       LOG ERRORS INTO NODES_ERROR_LOG
+                               ('Fix FFC ' || SYSDATE)
+                               REJECT LIMIT 100;
+                cntr_updated := cntr_updated + 1;
+
+      END LOOP
+      
+      */
+
+        COMMIT;
+
+        -- Check error logs
+        
+            SELECT COUNT (*) INTO serrlog_count FROM sections_history_error_log;
+
+        IF serrlog_count > 0
+        THEN
+            BEGIN
+                err_log_message :=
+                    'Unexpected Data Quality Issues in Sections error log ';
+
+                INSERT INTO WH_COMMON.TBERRLOG (ERR_DATETIME,
+                                                ERR_MODULE,
+                                                ERR_OID,
+                                                ERR_MESSAGE)
+                     VALUES (SYSDATE,
+                             g_jobname,
+                             g_owner,
+                             err_log_message);
+
+                INSERT INTO data_exceptions (TABLE_NAME,
+                                             ERROR_CONDITION,
+                                             TEST_PROCEDURE,
+                                             TEST_DATE,
+                                             ASSESSMENT)
+                     VALUES ('sections_history_error_log',
+                             'Invalid data - check error log',
+                             g_jobname,
+                             g_start_time,
+                             'QUALITY');
+
+                COMMIT;
+            END;
+        END IF;
+
+        SELECT COUNT (*) INTO serrlog_count FROM COMPLETE_NETWORK_ERROR_LOG;
+
+        IF serrlog_count > 0
+        THEN
+            BEGIN
+                err_log_message :=
+                    'Unexpected Data Quality Issues in COMPLETE_NETWORK_ERROR_LOG error log ';
+
+                INSERT INTO WH_COMMON.TBERRLOG (ERR_DATETIME,
+                                                ERR_MODULE,
+                                                ERR_OID,
+                                                ERR_MESSAGE)
+                     VALUES (SYSDATE,
+                             g_jobname,
+                             g_owner,
+                             err_log_message);
+
+                INSERT INTO data_exceptions (TABLE_NAME,
+                                             ERROR_CONDITION,
+                                             TEST_PROCEDURE,
+                                             TEST_DATE,
+                                             ASSESSMENT)
+                     VALUES ('COMPLETE_NETWORK_ERROR_LOG',
+                             'Invalid data - check error log',
+                             g_jobname,
+                             g_start_time,
+                             'QUALITY');
+
+                COMMIT;
+            END;
+        END IF;
+
+        SELECT COUNT (*) INTO serrlog_count FROM CRASHES_ON_ROUTE_ERROR_LOG;
+
+        IF serrlog_count > 0
+        THEN
+            BEGIN
+                err_log_message :=
+                    'Unexpected Data Quality Issues in CRASHES_ON_ROUTE_ERROR_LOG';
+
+                INSERT INTO WH_COMMON.TBERRLOG (ERR_DATETIME,
+                                                ERR_MODULE,
+                                                ERR_OID,
+                                                ERR_MESSAGE)
+                     VALUES (SYSDATE,
+                             g_jobname,
+                             g_owner,
+                             err_log_message);
+
+                INSERT INTO data_exceptions (TABLE_NAME,
+                                             ERROR_CONDITION,
+                                             TEST_PROCEDURE,
+                                             TEST_DATE,
+                                             ASSESSMENT)
+                     VALUES ('CRASHES_ON_ROUTE_ERROR_LOG',
+                             'Invalid data - check error log',
+                             g_jobname,
+                             g_start_time,
+                             'QUALITY');
+
+                COMMIT;
+            END;
+        END IF;
+
+        -- normal processing, ignoring quality errors
+
+        SELECT COUNT (*) INTO cntr FROM sections_history;
+
+        V_flat_file_counts_txt :=
+               'SECTIONS: '
+            || 'Total Rows: '
+            || cntr
+            || ' Added: '
+            || cntr_added
+            || ' Updated/New Row Added: '
+            || cntr_updated
+            || '  ';
+
+        WH_COMMON.PKG_COMMON_UTILITIES.UPDATE_WHSE_LOG (
+            OWNER         => G_OWNER,
+            OBJECT_NAME   => g_object,
+            object_cnt    => cntr,
+            add_cnt       => cntr_added,
+            update_cnt    => cntr_updated,
+            proc          => $$PLSQL_UNIT,
+            start_time    => g_start_time);
+
+        wh_common.pkg_common_utilities.EXIT_AND_REPORT (
+            g_jobname,
+            'NORMAL',
+            V_flat_file_counts_txt);
+   
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS
+    THEN
+        G_SQLMSG := SUBSTR (SQLERRM, 1, 400);
+        wh_common.pkg_common_utilities.update_whse_log (
+            g_owner,
+            g_object,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            'Error during ' || g_jobname || ': ' || G_SQLMSG,
+            'Failed');
+        wh_common.pkg_common_utilities.exit_and_report (
+            g_jobname,
+            'FAILURE',
+            g_jobname || ' - ' || G_SQLMSG);
+        RAISE_APPLICATION_ERROR (-20020, $$PLSQL_UNIT || ' ' || G_SQLMSG);
+END;
+/
